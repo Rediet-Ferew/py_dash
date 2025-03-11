@@ -26,6 +26,7 @@ dropdown_options = [{"label": col.replace("_", " ").title(), "value": col} for c
 
 # Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
+server = app.server
 app.title = "Customer Insights"
 
 # Layout for Navigation
