@@ -11,7 +11,7 @@ df.columns = ['Id','sepal length (cm)', 'sepal width (cm)', 'petal length (cm)',
 
 # Create a Dash app
 app = dash.Dash(__name__)
-
+server = app.server
 # Available columns for dropdown
 columns = df.columns[:-1]
 
