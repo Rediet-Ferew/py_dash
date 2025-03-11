@@ -6,7 +6,7 @@ from dash.dependencies import Input, Output
 from crm_script import monthly_breakdown
 
 # Load the data
-data = monthly_breakdown("crm_cleaned_data.csv")
+data = monthly_breakdown("crm_cleaned_data_updated.csv")
 monthly_df = data['monthly_breakdown']
 
 # Convert month period to string for plotting
