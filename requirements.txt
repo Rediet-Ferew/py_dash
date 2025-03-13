@@ -2,3 +2,5 @@ dash
 plotly
 pandas
 gunicorn
+simple_salesforce
+dotenv

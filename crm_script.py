@@ -1,13 +1,15 @@
 import pandas as pd
 
-def monthly_breakdown(file_path):
-    # Load data
-    df = pd.read_csv(file_path)
+def monthly_breakdown(df):
 
     # Ensure date is in datetime format
-    df['visit_date'] = pd.to_datetime(df['visit_date'], format='%d/%m/%Y', errors='coerce')
+    df['visit_date'] = pd.to_datetime(df['visit_date'], format='%Y-%m-%d %H:%M:%S%z', errors='coerce')
 
-    # Add month colusmn for aggregation
+
+    # Remove timezone before converting to period
+    df['visit_date'] = df['visit_date'].dt.tz_localize(None)
+
+    # Convert to month period
     df['month'] = df['visit_date'].dt.to_period('M')
 
     # Find first visit date for each customer

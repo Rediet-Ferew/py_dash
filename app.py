@@ -2,14 +2,21 @@ import dash
 from dash import dcc, html, dash_table
 import plotly.express as px
 import pandas as pd
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+import time  # Simulate loading time
 from crm_script import monthly_breakdown
+from salesforce_data import get_dataframe, get_data
 
-# Load the data
-data = monthly_breakdown("crm_cleaned_data_updated.csv")
+# Function to load data
+def load_data():
+    results = get_data()
+    df = get_dataframe(results)
+    data = monthly_breakdown(df)
+    return data
+
+# Initial Data Load
+data = load_data()
 monthly_df = data['monthly_breakdown']
-
-# Convert month period to string for plotting
 monthly_df['month'] = monthly_df['month'].astype(str)
 
 metrics = {
@@ -20,129 +27,147 @@ metrics = {
     "Average Customer Lifespan (Months)": data['Average Customer LifeSpan(Months)']
 }
 metrics_df = pd.DataFrame(metrics.items(), columns=["Metric", "Value"])
+metrics_df["Value"] = metrics_df["Value"].round(2).astype(str)
 
-# Available columns for dropdown selection (excluding "month")
 dropdown_options = [{"label": col.replace("_", " ").title(), "value": col} for col in monthly_df.columns if col != "month"]
 
-# Dash app
+# Dash app setup
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
 app.title = "Customer Insights"
 
-# Layout for Navigation
+# Main Layout
 app.layout = html.Div([
-    dcc.Location(id='url', refresh=False),  # Stores the current page
+    dcc.Location(id='url', refresh=False),
+    
     html.Div([
         dcc.Link('📊 Static Dashboard', href='/'),
         " | ",
         dcc.Link('📈 Compare Two Features', href='/dynamic'),
         " | ",
         dcc.Link('📑 LTV and Key Metrics', href='/metrics'),
+        " | ",
+        html.Button("🔄 Refresh Data", id="refresh-btn", n_clicks=0),
     ], style={'padding': '10px', 'fontSize': '20px'}),
 
-    html.Div(id='page-content')  # Content updates based on the selected page
+    html.Div(id="refresh-status", style={"color": "blue", "fontSize": "18px", "marginTop": "10px"}),  # Loading Message
+    
+    html.Div(id='page-content')  # Page Content
 ])
 
-# ====== PAGE 1: Insights Dashboard ======
-insights_layout = html.Div([
-    html.H1("CRM Analysis Report(Static)"),
-    
-    # Monthly Breakdown Table
-    html.H2("Monthly Breakdown"),
-    dash_table.DataTable(
-        columns=[{"name": col, "id": col} for col in monthly_df.columns],
-        data=monthly_df.round(2).astype(str).to_dict('records'),
-        style_table={'overflowX': 'auto'}
-    ),
-    
-    # Graphs
-    html.H2("Insights"),
-    
-    # New vs. Returning Customers (Line Graph)
-    dcc.Graph(
-        figure=px.line(
-            monthly_df, x='month', y=['new_customers', 'returning_customers'],
-            title="New vs Returning Customers Trend", markers=True
-        )
-    ),
-    
-    # New vs Returning Customers Percentage (Line Graph)
-    dcc.Graph(
-        figure=px.line(
-            monthly_df, x='month', y=['new_percentage', 'returning_percentage'],
-            title="New vs Returning Customers Percentage Trend", markers=True
-        )
-    ),
-    
-    # Revenue Breakdown (Bar Graph)
-    dcc.Graph(
-        figure=px.bar(monthly_df, x='month', y=['total_revenue', 'new_customer_revenue', 'returning_customer_revenue'],
-                       title="Revenue Breakdown", barmode='group')
-    ),
-    
-    # New vs Returning Revenue (Bar Graph)
-    dcc.Graph(
-        figure=px.bar(monthly_df, x='month', y=['new_customer_revenue', 'returning_customer_revenue'],
-                       title="New Customer Revenue vs Returning Customer Revenue", barmode='group')
-    ),
-    
-])
+# Function to generate page layouts dynamically
+def get_insights_layout():
+    return html.Div([
+        html.H1("CRM Analysis Report (Static)"),
+        html.H2("Monthly Breakdown"),
+        dash_table.DataTable(
+            columns=[{"name": col, "id": col} for col in monthly_df.columns],
+            data=monthly_df.round(2).astype(str).to_dict('records'),
+            style_table={'overflowX': 'auto'}
+        ),
+        html.H2("Insights"),
+        dcc.Graph(figure=px.line(monthly_df, x='month', y=['new_customers', 'returning_customers'],
+                                 title="New vs Returning Customers Trend", markers=True)),
+        dcc.Graph(figure=px.line(monthly_df, x='month', y=['new_percentage', 'returning_percentage'],
+                                 title="New vs Returning Customers Percentage Trend", markers=True)),
+        dcc.Graph(figure=px.bar(monthly_df, x='month', y=['total_revenue', 'new_customer_revenue', 'returning_customer_revenue'],
+                                 title="Revenue Breakdown", barmode='group')),
+        dcc.Graph(figure=px.bar(monthly_df, x='month', y=['new_customer_revenue', 'returning_customer_revenue'],
+                                 title="New Customer Revenue vs Returning Customer Revenue", barmode='group')),
+    ])
 
-# ====== PAGE 2: Dynamic Comparison Graph ======
-dynamic_graph_layout = html.Div([
-    html.H1("📈 Compare Two Features Over Month"),
-    
-    html.Label("Select First Feature:"),
-    dcc.Dropdown(
-        id='y-axis-dropdown-1',
-        options=dropdown_options,
-        value='new_customers',  # Default Y-axis 1
-        clearable=False
-    ),
-    
-    html.Label("Select Second Feature:"),
-    dcc.Dropdown(
-        id='y-axis-dropdown-2',
-        options=dropdown_options,
-        value='returning_customers',  # Default Y-axis 2
-        clearable=False
-    ),
-    
-    dcc.Graph(id='dynamic-comparison-graph')
-])
+def get_dynamic_graph_layout():
+    return html.Div([
+        html.H1("📈 Compare Two Features Over Month"),
+        html.Label("Select First Feature:"),
+        dcc.Dropdown(id='y-axis-dropdown-1', options=dropdown_options, value='new_customers', clearable=False),
+        html.Label("Select Second Feature:"),
+        dcc.Dropdown(id='y-axis-dropdown-2', options=dropdown_options, value='returning_customers', clearable=False),
+        dcc.Graph(id='dynamic-comparison-graph')
+    ])
 
-metrics_df["Value"] = metrics_df["Value"].round(2).astype(str)
+def get_metrics_layout():
+    return html.Div([
+        html.H1("Key Metrics"),
+        dash_table.DataTable(
+            columns=[{"name": col, "id": col} for col in metrics_df.columns],
+            data=metrics_df.to_dict('records'),
+            style_table={'overflowX': 'auto'}
+        ),
+    ])
 
-metrics_layout = html.Div([
-    html.H1("Key Metrics"),
-    
-    dash_table.DataTable(
-        columns=[{"name": col, "id": col} for col in metrics_df.columns],
-        data=metrics_df.to_dict('records'),
-        style_table={'overflowX': 'auto'}
-    ),
-])
-# ====== CALLBACKS ======
-
+# Combined Callback for Page Navigation & Refresh Button
 @app.callback(
-    Output('page-content', 'children'),
-    Input('url', 'pathname')
+    [Output('page-content', 'children'),
+     Output('refresh-status', 'children'),
+     Output("refresh-btn", "children")],  # Updates button text
+    [Input('url', 'pathname'), Input('refresh-btn', 'n_clicks')],
+    prevent_initial_call=True
 )
-def display_page(pathname):
-    """ Update the displayed page based on navigation. """
-    if pathname == '/dynamic':
-        return dynamic_graph_layout
-    elif pathname == '/metrics':
-        return metrics_layout
-    return insights_layout  # Default page
+def update_page(pathname, n_clicks):
+    """ Handles both page navigation and refresh button with a loading state """
+    global data, monthly_df, metrics_df  
 
+    ctx = dash.callback_context
+    if ctx.triggered and ctx.triggered[0]['prop_id'] == 'refresh-btn.n_clicks':
+        # Show "Refreshing..." Message
+        return dash.no_update, "🕛 Refreshing data... Please wait.", "Refreshing..."
+
+    # Handle page routing
+    if pathname == '/dynamic':
+        return get_dynamic_graph_layout(), "", "🔄 Refresh Data"
+    elif pathname == '/metrics':
+        return get_metrics_layout(), "", "🔄 Refresh Data"
+    return get_insights_layout(), "", "🔄 Refresh Data"
+
+# Callback to actually refresh data after some delay
+@app.callback(
+    [Output('page-content', 'children', allow_duplicate=True),
+     Output('refresh-status', 'children', allow_duplicate=True),
+     Output("refresh-btn", "children", allow_duplicate=True)],
+    Input("refresh-btn", "n_clicks"),
+    State('url', 'pathname'),
+    prevent_initial_call="initial_duplicate"
+)
+def refresh_dashboard(n_clicks, pathname):
+    """ Simulates data reloading and updates the UI with a success message """
+    global data, monthly_df, metrics_df  
+
+    # Simulating a loading delay (Replace this with actual data fetch)
+    time.sleep(3)
+
+    # Reload data
+    data = load_data()
+    monthly_df = data['monthly_breakdown']
+    monthly_df['month'] = monthly_df['month'].astype(str)
+
+    metrics = {
+        "Basic LTV": data['Basic LTV'],
+        "Advanced LTV": data['Advanced LTV'],
+        "Average Purchase Value": data['Average Purchase Value'],
+        "Average Purchase Frequency": data['Average Purchase Frequency'],
+        "Average Customer Lifespan (Months)": data['Average Customer LifeSpan(Months)']
+    }
+    metrics_df = pd.DataFrame(metrics.items(), columns=["Metric", "Value"])
+    metrics_df["Value"] = metrics_df["Value"].round(2).astype(str)
+
+    # Determine which page to refresh
+    if pathname == '/dynamic':
+        page_layout = get_dynamic_graph_layout()
+    elif pathname == '/metrics':
+        page_layout = get_metrics_layout()
+    else:
+        page_layout = get_insights_layout()
+
+    return page_layout, "✅ Data refreshed successfully!", "🔄 Refresh Data"
+
+# Dynamic Graph Update Callback
 @app.callback(
     Output('dynamic-comparison-graph', 'figure'),
     [Input('y-axis-dropdown-1', 'value'),
      Input('y-axis-dropdown-2', 'value')]
 )
 def update_graph(y_axis_1, y_axis_2):
-    """ Update the dynamic graph with two selected features (Y-axis). """
     fig = px.line(monthly_df, x='month', y=[y_axis_1, y_axis_2], 
                   title=f"Comparison: {y_axis_1.replace('_', ' ').title()} vs {y_axis_2.replace('_', ' ').title()}",
                   markers=True)
